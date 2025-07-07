@@ -106,7 +106,7 @@ class IntermarketDatasetManager:
     def get_murphy_principle_data(self):
         principles_data = {}
         
-        # Principle 1: Bonds vs Commodities
+        # Principle 1: Bonds vs Commodities inverse relationship
         bonds_data = self.get_asset_data(AssetType.BONDS)
         commodities_data = self.get_asset_data(AssetType.COMMODITIES)
         
@@ -130,7 +130,7 @@ class IntermarketDatasetManager:
                     'equities': spx.data['close']
                 }
         
-        # Principle 3: Commodities vs Currencies
+        # Principle 3: Commodities vs Currencies (inverse relationship)
         forex_data = self.get_asset_data(AssetType.FOREX)
         if commodities_data and forex_data:
             gold = commodities_data.get('commodities_XAUUSD')
@@ -139,6 +139,30 @@ class IntermarketDatasetManager:
                 principles_data['commodities_currencies'] = {
                     'gold': gold.data['close'],
                     'usd_index': 1/eurusd.data['close']  # Approximate USD strength
+                }
+        
+        # Principle 4: Currency strength tied to interest rate differentials
+        if bonds_data and forex_data:
+            us10y = bonds_data.get('bonds_US10Y')
+            ca10y = bonds_data.get('bonds_CA10Y')
+            usdcad = forex_data.get('forex_USDCAD')
+            
+            if us10y and ca10y and usdcad:
+                principles_data['interest_rate_differentials'] = {
+                    'us_yield': us10y.data['close'],
+                    'ca_yield': ca10y.data['close'],
+                    'usdcad': usdcad.data['close']
+                }
+        
+        # Principle 5: Cross-market confirmation
+        if equities_data and forex_data:
+            eurjpy = forex_data.get('forex_EURJPY')
+            nasdaq = equities_data.get('equities_NASDAQ')
+            
+            if eurjpy and nasdaq:
+                principles_data['cross_market_confirmation'] = {
+                    'eurjpy': eurjpy.data['close'],
+                    'nasdaq': nasdaq.data['close']
                 }
         
         return principles_data

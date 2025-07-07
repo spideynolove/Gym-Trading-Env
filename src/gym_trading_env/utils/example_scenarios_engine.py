@@ -8,20 +8,20 @@ import pytz
 from .intermarket_dataset_manager import IntermarketDatasetManager, AssetType
 from .fa_ta_ia_framework import FATAIAFramework
 
-class ThiduScenario(Enum):
-    THIDU_1_LONG_GOLD = "thidu_1_long_gold"
-    THIDU_2_DEFLATION_FEAR = "thidu_2_deflation_fear"
-    THIDU_3_FED_AMBIGUITY = "thidu_3_fed_ambiguity"
-    THIDU_4_ECB_QE_EARNINGS = "thidu_4_ecb_qe_earnings"
-    THIDU_5_FOMC_SENTIMENT = "thidu_5_fomc_sentiment"
-    THIDU_6_GERMAN_EQUITIES_QE = "thidu_6_german_equities_qe"
-    THIDU_7_EUR_CAD_UPDATE = "thidu_7_eur_cad_update"
-    THIDU_8_GOLD_ECB_QE = "thidu_8_gold_ecb_qe"
-    THIDU_9_NFP_RATE_HIKE = "thidu_9_nfp_rate_hike"
+class ExampleScenario(Enum):
+    EXAMPLE_1_LONG_GOLD = "example_1_long_gold"
+    EXAMPLE_2_DEFLATION_FEAR = "example_2_deflation_fear"
+    EXAMPLE_3_FED_AMBIGUITY = "example_3_fed_ambiguity"
+    EXAMPLE_4_ECB_QE_EARNINGS = "example_4_ecb_qe_earnings"
+    EXAMPLE_5_FOMC_SENTIMENT = "example_5_fomc_sentiment"
+    EXAMPLE_6_GERMAN_EQUITIES_QE = "example_6_german_equities_qe"
+    EXAMPLE_7_EUR_CAD_UPDATE = "example_7_eur_cad_update"
+    EXAMPLE_8_GOLD_ECB_QE = "example_8_gold_ecb_qe"
+    EXAMPLE_9_NFP_RATE_HIKE = "example_9_nfp_rate_hike"
 
 @dataclass
 class ScenarioDetection:
-    scenario: ThiduScenario
+    scenario: ExampleScenario
     detected: bool
     confidence: float
     trigger_conditions: Dict
@@ -29,7 +29,7 @@ class ScenarioDetection:
     risk_level: str
     timestamp: datetime.datetime
 
-class ThiduScenariosEngine:
+class ExampleScenariosEngine:
     
     def __init__(self, dataset_manager: IntermarketDatasetManager, framework: FATAIAFramework):
         self.dataset_manager = dataset_manager
@@ -43,19 +43,19 @@ class ThiduScenariosEngine:
     def detect_all_scenarios(self):
         scenarios = {}
         
-        scenarios[ThiduScenario.THIDU_1_LONG_GOLD] = self.detect_thidu_1_long_gold()
-        scenarios[ThiduScenario.THIDU_2_DEFLATION_FEAR] = self.detect_thidu_2_deflation_fear()
-        scenarios[ThiduScenario.THIDU_3_FED_AMBIGUITY] = self.detect_thidu_3_fed_ambiguity()
-        scenarios[ThiduScenario.THIDU_4_ECB_QE_EARNINGS] = self.detect_thidu_4_ecb_qe_earnings()
-        scenarios[ThiduScenario.THIDU_5_FOMC_SENTIMENT] = self.detect_thidu_5_fomc_sentiment()
-        scenarios[ThiduScenario.THIDU_6_GERMAN_EQUITIES_QE] = self.detect_thidu_6_german_equities_qe()
-        scenarios[ThiduScenario.THIDU_7_EUR_CAD_UPDATE] = self.detect_thidu_7_eur_cad_update()
-        scenarios[ThiduScenario.THIDU_8_GOLD_ECB_QE] = self.detect_thidu_8_gold_ecb_qe()
-        scenarios[ThiduScenario.THIDU_9_NFP_RATE_HIKE] = self.detect_thidu_9_nfp_rate_hike()
+        scenarios[ExampleScenario.EXAMPLE_1_LONG_GOLD] = self.detect_example_1_long_gold()
+        scenarios[ExampleScenario.EXAMPLE_2_DEFLATION_FEAR] = self.detect_example_2_deflation_fear()
+        scenarios[ExampleScenario.EXAMPLE_3_FED_AMBIGUITY] = self.detect_example_3_fed_ambiguity()
+        scenarios[ExampleScenario.EXAMPLE_4_ECB_QE_EARNINGS] = self.detect_example_4_ecb_qe_earnings()
+        scenarios[ExampleScenario.EXAMPLE_5_FOMC_SENTIMENT] = self.detect_example_5_fomc_sentiment()
+        scenarios[ExampleScenario.EXAMPLE_6_GERMAN_EQUITIES_QE] = self.detect_example_6_german_equities_qe()
+        scenarios[ExampleScenario.EXAMPLE_7_EUR_CAD_UPDATE] = self.detect_example_7_eur_cad_update()
+        scenarios[ExampleScenario.EXAMPLE_8_GOLD_ECB_QE] = self.detect_example_8_gold_ecb_qe()
+        scenarios[ExampleScenario.EXAMPLE_9_NFP_RATE_HIKE] = self.detect_example_9_nfp_rate_hike()
         
         return scenarios
     
-    def detect_thidu_1_long_gold(self):
+    def detect_example_1_long_gold(self):
         commodities_data = self.dataset_manager.get_asset_data(AssetType.COMMODITIES)
         forex_data = self.dataset_manager.get_asset_data(AssetType.FOREX)
         
@@ -127,7 +127,7 @@ class ThiduScenariosEngine:
             ]
         
         return ScenarioDetection(
-            scenario=ThiduScenario.THIDU_1_LONG_GOLD,
+            scenario=ExampleScenario.EXAMPLE_1_LONG_GOLD,
             detected=detected,
             confidence=confidence,
             trigger_conditions=trigger_conditions,
@@ -136,7 +136,7 @@ class ThiduScenariosEngine:
             timestamp=datetime.datetime.now(pytz.UTC)
         )
     
-    def detect_thidu_9_nfp_rate_hike(self):
+    def detect_example_9_nfp_rate_hike(self):
         equities_data = self.dataset_manager.get_asset_data(AssetType.EQUITIES)
         forex_data = self.dataset_manager.get_asset_data(AssetType.FOREX)
         bonds_data = self.dataset_manager.get_asset_data(AssetType.BONDS)
@@ -224,7 +224,7 @@ class ThiduScenariosEngine:
             ]
         
         return ScenarioDetection(
-            scenario=ThiduScenario.THIDU_9_NFP_RATE_HIKE,
+            scenario=ExampleScenario.EXAMPLE_9_NFP_RATE_HIKE,
             detected=detected,
             confidence=confidence,
             trigger_conditions=trigger_conditions,
@@ -233,7 +233,7 @@ class ThiduScenariosEngine:
             timestamp=datetime.datetime.now(pytz.UTC)
         )
     
-    def detect_thidu_4_ecb_qe_earnings(self):
+    def detect_example_4_ecb_qe_earnings(self):
         forex_data = self.dataset_manager.get_asset_data(AssetType.FOREX)
         equities_data = self.dataset_manager.get_asset_data(AssetType.EQUITIES)
         
@@ -299,7 +299,7 @@ class ThiduScenariosEngine:
             ]
         
         return ScenarioDetection(
-            scenario=ThiduScenario.THIDU_4_ECB_QE_EARNINGS,
+            scenario=ExampleScenario.EXAMPLE_4_ECB_QE_EARNINGS,
             detected=detected,
             confidence=confidence,
             trigger_conditions=trigger_conditions,
@@ -308,7 +308,7 @@ class ThiduScenariosEngine:
             timestamp=datetime.datetime.now(pytz.UTC)
         )
     
-    def detect_thidu_7_eur_cad_update(self):
+    def detect_example_7_eur_cad_update(self):
         forex_data = self.dataset_manager.get_asset_data(AssetType.FOREX)
         bonds_data = self.dataset_manager.get_asset_data(AssetType.BONDS)
         
@@ -403,7 +403,7 @@ class ThiduScenariosEngine:
             ]
         
         return ScenarioDetection(
-            scenario=ThiduScenario.THIDU_7_EUR_CAD_UPDATE,
+            scenario=ExampleScenario.EXAMPLE_7_EUR_CAD_UPDATE,
             detected=detected,
             confidence=confidence,
             trigger_conditions=trigger_conditions,
@@ -413,27 +413,27 @@ class ThiduScenariosEngine:
         )
     
     # Placeholder implementations for remaining scenarios
-    def detect_thidu_2_deflation_fear(self):
-        return self.create_placeholder_scenario(ThiduScenario.THIDU_2_DEFLATION_FEAR, 
+    def detect_example_2_deflation_fear(self):
+        return self.create_placeholder_scenario(ExampleScenario.EXAMPLE_2_DEFLATION_FEAR, 
                                               ["Long bonds", "Long gold", "Short equities", "Monitor yields"])
     
-    def detect_thidu_3_fed_ambiguity(self):
-        return self.create_placeholder_scenario(ThiduScenario.THIDU_3_FED_AMBIGUITY,
+    def detect_example_3_fed_ambiguity(self):
+        return self.create_placeholder_scenario(ExampleScenario.EXAMPLE_3_FED_AMBIGUITY,
                                               ["Avoid aggressive USD trades", "Focus on TA signals", "Wait for clarity"])
     
-    def detect_thidu_5_fomc_sentiment(self):
-        return self.create_placeholder_scenario(ThiduScenario.THIDU_5_FOMC_SENTIMENT,
+    def detect_example_5_fomc_sentiment(self):
+        return self.create_placeholder_scenario(ExampleScenario.EXAMPLE_5_FOMC_SENTIMENT,
                                               ["Trade market reactions", "Follow sentiment", "Monitor bonds/USD"])
     
-    def detect_thidu_6_german_equities_qe(self):
-        return self.create_placeholder_scenario(ThiduScenario.THIDU_6_GERMAN_EQUITIES_QE,
+    def detect_example_6_german_equities_qe(self):
+        return self.create_placeholder_scenario(ExampleScenario.EXAMPLE_6_GERMAN_EQUITIES_QE,
                                               ["Long DAX futures", "Monitor ECB QE", "Trade thin conditions"])
     
-    def detect_thidu_8_gold_ecb_qe(self):
-        return self.create_placeholder_scenario(ThiduScenario.THIDU_8_GOLD_ECB_QE,
+    def detect_example_8_gold_ecb_qe(self):
+        return self.create_placeholder_scenario(ExampleScenario.EXAMPLE_8_GOLD_ECB_QE,
                                               ["Avoid late gold entries", "Short NZD/USD", "Monitor profit-taking"])
     
-    def create_placeholder_scenario(self, scenario: ThiduScenario, actions: List[str]):
+    def create_placeholder_scenario(self, scenario: ExampleScenario, actions: List[str]):
         return ScenarioDetection(
             scenario=scenario,
             detected=False,

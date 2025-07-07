@@ -6,6 +6,8 @@ from enum import Enum
 import datetime
 import pytz
 from .intermarket_dataset_manager import IntermarketDatasetManager, AssetType
+from .trading_scenarios import TradingScenarioEngine, TradingScenario
+from .cross_market_analytics import CrossMarketAnalytics
 
 class CurrencyProfile(Enum):
     USD = "USD"
@@ -348,7 +350,7 @@ class IAAnalyzer:
         murphy_data = self.dataset_manager.get_murphy_principle_data()
         principles_signals = {}
         
-        # Principle 1: Bonds vs Commodities inverse
+        # Principle 1: Bonds vs Commodities inverse relationship
         if 'bonds_commodities' in murphy_data:
             bonds = murphy_data['bonds_commodities']['bonds'].pct_change().tail(20)
             commodities = murphy_data['bonds_commodities']['commodities'].pct_change().tail(20)
@@ -375,6 +377,49 @@ class IAAnalyzer:
             principles_signals['bonds_lead_equities'] = {
                 'lead_correlation': lead_correlation,
                 'signal': 'leading' if abs(lead_correlation) > 0.4 else 'weak',
+                'strength': abs(lead_correlation)
+            }
+        
+        # Principle 3: Commodities vs Currencies inverse relationship
+        if 'commodities_currencies' in murphy_data:
+            gold = murphy_data['commodities_currencies']['gold'].pct_change().tail(20)
+            usd_index = murphy_data['commodities_currencies']['usd_index'].pct_change().tail(20)
+            correlation = gold.corr(usd_index)
+            
+            principles_signals['commodities_currencies_inverse'] = {
+                'correlation': correlation,
+                'signal': 'confirmed' if correlation < -0.4 else 'weak',
+                'strength': abs(correlation) if correlation < 0 else 0
+            }
+        
+        # Principle 4: Currency strength tied to interest rate differentials
+        if 'interest_rate_differentials' in murphy_data:
+            us_yield = murphy_data['interest_rate_differentials']['us_yield']
+            ca_yield = murphy_data['interest_rate_differentials']['ca_yield']
+            usdcad = murphy_data['interest_rate_differentials']['usdcad']
+            
+            # Calculate yield spread and correlation with currency
+            yield_spread = (us_yield - ca_yield).pct_change().tail(20)
+            currency_change = usdcad.pct_change().tail(20)
+            correlation = yield_spread.corr(currency_change)
+            
+            principles_signals['interest_rate_differentials'] = {
+                'correlation': correlation,
+                'signal': 'confirmed' if correlation > 0.5 else 'weak',
+                'strength': abs(correlation) if correlation > 0 else 0
+            }
+        
+        # Principle 5: Cross-market confirmation (EURJPY leads NASDAQ)
+        if 'cross_market_confirmation' in murphy_data:
+            eurjpy = murphy_data['cross_market_confirmation']['eurjpy'].pct_change()
+            nasdaq = murphy_data['cross_market_confirmation']['nasdaq'].pct_change()
+            
+            # Check if EURJPY leads NASDAQ
+            lead_correlation = eurjpy.shift(1).corr(nasdaq)
+            
+            principles_signals['cross_market_confirmation'] = {
+                'lead_correlation': lead_correlation,
+                'signal': 'leading' if abs(lead_correlation) > 0.5 else 'weak',
                 'strength': abs(lead_correlation)
             }
         
@@ -484,6 +529,8 @@ class FATAIAFramework:
         self.ta_analyzer = TAAnalyzer()
         self.ia_analyzer = IAAnalyzer(dataset_manager)
         self.dataset_manager = dataset_manager
+        self.scenario_engine = TradingScenarioEngine(dataset_manager)
+        self.cross_market_analytics = CrossMarketAnalytics(dataset_manager)
     
     def comprehensive_analysis(self, currency_pair: str, indicators: List[EconomicIndicator]):
         analysis = {}
@@ -517,6 +564,17 @@ class FATAIAFramework:
         
         # Integrated signals
         analysis['integrated_signals'] = self.generate_integrated_signals(analysis)
+        
+        # Trading scenarios
+        market_sentiment = self.fa_analyzer.determine_market_sentiment(
+            {base_currency.value: base_fa['fa_score'], quote_currency.value: quote_fa['fa_score']},
+            self.dataset_manager.synchronized_data
+        )
+        
+        analysis['trading_scenarios'] = self.scenario_engine.detect_active_scenarios(indicators, market_sentiment)
+        
+        # Cross-market analytics
+        analysis['cross_market_signals'] = self.cross_market_analytics.get_intermarket_signals()
         
         return analysis
     

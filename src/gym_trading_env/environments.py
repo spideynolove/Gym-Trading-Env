@@ -127,11 +127,39 @@ class TradingEnv(gym.Env):
                 news_risk_manager=self.news_risk_manager
             )
             self._current_positions = {}
+            
+            # Initialize FA+TA+IA framework components with proper multi-asset loading
+            try:
+                from .utils.intermarket_dataset_manager import IntermarketDatasetManager
+                from .utils.fa_ta_ia_framework import FATAIAFramework
+                from .utils.murphy_principles_detector import MurphyPrinciplesDetector
+                from .utils.example_scenarios_engine import ExampleScenariosEngine
+                
+                self.intermarket_dataset_manager = IntermarketDatasetManager()
+                # Load multi-asset datasets if base directory exists
+                base_data_dir = getattr(self, 'base_data_dir', 'data')
+                try:
+                    self.intermarket_dataset_manager.load_multi_asset_datasets(base_data_dir)
+                except (FileNotFoundError, OSError):
+                    pass  # Continue without multi-asset data if not available
+                
+                self.fa_ta_ia_framework = FATAIAFramework(self.intermarket_dataset_manager)
+                self.murphy_principles_detector = MurphyPrinciplesDetector(self.intermarket_dataset_manager)
+                self.example_scenarios_engine = ExampleScenariosEngine(self.intermarket_dataset_manager, self.fa_ta_ia_framework)
+            except ImportError:
+                self.intermarket_dataset_manager = None
+                self.fa_ta_ia_framework = None
+                self.murphy_principles_detector = None
+                self.example_scenarios_engine = None
         else:
             self.session_manager = None
             self.news_risk_manager = None
             self.correlation_manager = None
             self.unified_market_manager = None
+            self.intermarket_dataset_manager = None
+            self.fa_ta_ia_framework = None
+            self.murphy_principles_detector = None
+            self.example_scenarios_engine = None
         
         self._set_df(df)
         
@@ -174,7 +202,15 @@ class TradingEnv(gym.Env):
                 'enhanced_news_volatility_forecast',
                 'enhanced_session_liquidity',
                 'enhanced_session_volatility',
-                'enhanced_london_ny_overlap'
+                'enhanced_london_ny_overlap',
+                'fa_sentiment_score',
+                'fa_currency_strength',
+                'ta_trend_strength',
+                'ta_entry_signal_strength',
+                'ia_cross_market_confirmation',
+                'ia_murphy_principles_score',
+                'integrated_trade_confidence',
+                'integrated_risk_level'
             ]
             
             for feature_name in enhanced_feature_names:
@@ -246,6 +282,117 @@ class TradingEnv(gym.Env):
                 self._obs_array[self._idx, session_offset + 1] = session_info['volatility_multiplier']
             if session_offset + 2 < self._obs_array.shape[1]:
                 self._obs_array[self._idx, session_offset + 2] = 1.0 if session_info['is_london_ny_overlap'] else 0.0
+        
+        # Add FA+TA+IA framework features
+        if hasattr(self, 'fa_ta_ia_framework') and self.fa_ta_ia_framework:
+            fa_ta_ia_features = self._calculate_fa_ta_ia_features(current_timestamp)
+            fa_ta_ia_offset = self._nb_static_features + len(self.dynamic_feature_functions) + 9
+            
+            fa_ta_ia_mapping = {
+                'fa_sentiment_score': 0,
+                'fa_currency_strength': 1,
+                'ta_trend_strength': 2,
+                'ta_entry_signal_strength': 3,
+                'ia_cross_market_confirmation': 4,
+                'ia_murphy_principles_score': 5,
+                'integrated_trade_confidence': 6,
+                'integrated_risk_level': 7
+            }
+            
+            for feature_name, offset in fa_ta_ia_mapping.items():
+                if fa_ta_ia_offset + offset < self._obs_array.shape[1]:
+                    self._obs_array[self._idx, fa_ta_ia_offset + offset] = fa_ta_ia_features.get(feature_name, 0.0)
+    
+    def _calculate_fa_ta_ia_features(self, timestamp):
+        """Calculate FA+TA+IA framework features for current timestamp"""
+        if not self.fa_ta_ia_framework:
+            return {}
+        
+        try:
+            # Get current market data for analysis
+            current_data = self.df.iloc[max(0, self._idx-100):self._idx+1]
+            
+            # Get real economic indicators from existing NewsRiskManager
+            from .utils.fa_ta_ia_framework import EconomicIndicator, CurrencyProfile
+            import datetime
+            
+            real_indicators = []
+            
+            if self.news_risk_manager:
+                try:
+                    # Get upcoming economic events from existing NewsRiskManager
+                    upcoming_events = self.news_risk_manager.get_upcoming_events(timestamp, hours_ahead=168)  # 1 week
+                    
+                    # Convert events to EconomicIndicator format
+                    for event in upcoming_events:
+                        if hasattr(event, 'currency') and hasattr(event, 'event_name'):
+                            try:
+                                currency_profile = CurrencyProfile(event.currency)
+                                economic_indicator = EconomicIndicator(
+                                    currency=currency_profile,
+                                    indicator_name=event.event_name,
+                                    impact_level=getattr(event, 'impact_level', 'Medium'),
+                                    release_frequency=getattr(event, 'frequency', 'Unknown'),
+                                    expected_value=getattr(event, 'forecast', 0.0),
+                                    actual_value=getattr(event, 'actual', getattr(event, 'forecast', 0.0)),
+                                    previous_value=getattr(event, 'previous', 0.0),
+                                    timestamp=timestamp
+                                )
+                                real_indicators.append(economic_indicator)
+                            except (ValueError, AttributeError):
+                                continue  # Skip invalid events
+                except Exception:
+                    pass  # Continue with empty list if NewsRiskManager fails
+            
+            # Fallback to basic indicators if no real data available
+            if not real_indicators:
+                real_indicators = [
+                    EconomicIndicator(
+                        currency=CurrencyProfile.USD,
+                        indicator_name='Market_Sentiment',
+                        impact_level='Medium',
+                        release_frequency='Daily',
+                        expected_value=0.0,
+                        actual_value=0.0,
+                        previous_value=0.0,
+                        timestamp=timestamp
+                    )
+                ]
+            
+            # Perform comprehensive analysis with real indicators
+            analysis = self.fa_ta_ia_framework.comprehensive_analysis(
+                self.currency_pair.replace('/', ''),
+                real_indicators
+            )
+            
+            # Extract features from analysis
+            fa_features = analysis.get('fa', {})
+            ta_features = analysis.get('ta', {})
+            ia_features = analysis.get('ia', {})
+            integrated_signals = analysis.get('integrated_signals', {})
+            
+            return {
+                'fa_sentiment_score': fa_features.get('relative_strength', 0.0),
+                'fa_currency_strength': abs(fa_features.get('relative_strength', 0.0)),
+                'ta_trend_strength': 1.0 if ta_features.get('trend') == 'Uptrend' else -1.0 if ta_features.get('trend') == 'Downtrend' else 0.0,
+                'ta_entry_signal_strength': len(ta_features.get('entry_signals', [])) * 0.2,
+                'ia_cross_market_confirmation': 1.0 if integrated_signals.get('cross_market_confirmation', False) else 0.0,
+                'ia_murphy_principles_score': len(ia_features.get('murphy_principles', {})) * 0.3,
+                'integrated_trade_confidence': integrated_signals.get('confidence', 0.0),
+                'integrated_risk_level': {'low': 0.2, 'medium': 0.5, 'high': 0.8}.get(integrated_signals.get('risk_level', 'medium'), 0.5)
+            }
+        except Exception as e:
+            # Return default values if analysis fails
+            return {
+                'fa_sentiment_score': 0.0,
+                'fa_currency_strength': 0.0,
+                'ta_trend_strength': 0.0,
+                'ta_entry_signal_strength': 0.0,
+                'ia_cross_market_confirmation': 0.0,
+                'ia_murphy_principles_score': 0.0,
+                'integrated_trade_confidence': 0.0,
+                'integrated_risk_level': 0.5
+            }
 
     
     def reset(self, seed = None, options=None, **kwargs):
@@ -351,14 +498,66 @@ class TradingEnv(gym.Env):
         else:
             unified_multiplier = 1.0
         
+        # 5. FA+TA+IA framework analysis
+        fa_ta_ia_multiplier = 1.0
+        if self.fa_ta_ia_framework:
+            fa_ta_ia_features = self._calculate_fa_ta_ia_features(current_timestamp)
+            
+            # Apply FA+TA+IA based position sizing
+            trade_confidence = fa_ta_ia_features.get('integrated_trade_confidence', 0.0)
+            risk_level = fa_ta_ia_features.get('integrated_risk_level', 0.5)
+            
+            # Adjust position size based on confidence and risk
+            if trade_confidence > 0.7 and risk_level < 0.6:
+                fa_ta_ia_multiplier = 1.2  # Increase position size for high confidence, low risk
+            elif trade_confidence < 0.3 or risk_level > 0.7:
+                fa_ta_ia_multiplier = 0.5  # Reduce position size for low confidence or high risk
+            
+            # Apply cross-market confirmation
+            if not fa_ta_ia_features.get('ia_cross_market_confirmation', False):
+                fa_ta_ia_multiplier *= 0.8  # Reduce size without cross-market confirmation
+        
+        # 6. Murphy principles multiplier using existing detector
+        murphy_multiplier = 1.0
+        if self.murphy_principles_detector:
+            try:
+                murphy_analysis = self.murphy_principles_detector.detect_all_principles()
+                # Calculate average principle strength
+                principle_strengths = []
+                for principle_data in murphy_analysis.values():
+                    if hasattr(principle_data, 'signal_strength'):
+                        principle_strengths.append(principle_data.signal_strength)
+                
+                if principle_strengths:
+                    avg_strength = sum(principle_strengths) / len(principle_strengths)
+                    murphy_multiplier = 0.8 + (avg_strength * 0.4)  # Range 0.8-1.2
+            except Exception:
+                murphy_multiplier = 1.0
+        
+        # 7. Scenario multiplier using existing scenarios engine
+        scenario_multiplier = 1.0
+        if self.example_scenarios_engine:
+            try:
+                active_scenarios = self.example_scenarios_engine.detect_all_scenarios()
+                high_confidence_scenarios = [s for s in active_scenarios.values() 
+                                           if hasattr(s, 'confidence') and s.confidence > 0.7]
+                
+                if high_confidence_scenarios:
+                    scenario_multiplier = 1.1  # Boost for high-confidence scenarios
+                elif any(hasattr(s, 'confidence') and s.confidence > 0.5 for s in active_scenarios.values()):
+                    scenario_multiplier = 1.05  # Small boost for medium-confidence scenarios
+            except Exception:
+                scenario_multiplier = 1.0
+        
         # Apply restrictions and adjustments
         if should_restrict:
             # Avoid trading during high-risk news events
             adjusted_position = self._position  # Stay in current position
         else:
-            # Calculate final position with all multipliers
+            # Calculate final position with all multipliers (now 6 total)
             base_position_change = intended_position - self._position
-            final_multiplier = session_multiplier * news_multiplier * correlation_multiplier * unified_multiplier
+            final_multiplier = (session_multiplier * news_multiplier * correlation_multiplier * 
+                              unified_multiplier * fa_ta_ia_multiplier * murphy_multiplier * scenario_multiplier)
             
             # Apply constraints (don't exceed position limits)
             adjusted_change = base_position_change * final_multiplier
@@ -530,6 +729,23 @@ class MultiDatasetTradingEnv(TradingEnv):
         self.dataset_pathes = glob.glob(self.dataset_dir)
         if len(self.dataset_pathes) == 0:raise FileNotFoundError(f"No dataset found with the path : {self.dataset_dir}")
         self.dataset_nb_uses = np.zeros(shape=(len(self.dataset_pathes), ))
+        
+        # Enhanced multi-asset coordination using existing IntermarketDatasetManager
+        if kwargs.get('enable_enhanced_features', True):
+            try:
+                from .utils.intermarket_dataset_manager import IntermarketDatasetManager
+                self.multi_asset_coordination = IntermarketDatasetManager()
+                # Try to load multi-asset datasets for coordinated analysis
+                base_data_dir = getattr(self, 'base_data_dir', self.dataset_dir.rsplit('/', 1)[0] if '/' in self.dataset_dir else 'data')
+                try:
+                    self.multi_asset_coordination.load_multi_asset_datasets(base_data_dir)
+                except (FileNotFoundError, OSError):
+                    pass  # Continue without multi-asset data if not available
+            except ImportError:
+                self.multi_asset_coordination = None
+        else:
+            self.multi_asset_coordination = None
+        
         super().__init__(self.next_dataset(), *args, **kwargs)
 
     def next_dataset(self):

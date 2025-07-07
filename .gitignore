@@ -1,5 +1,4 @@
 __pycache__
-venv
 .vscode
 dist
 .ipynbcheckpoints
@@ -13,3 +12,7 @@ my_example.py
 
 # user define
 materials/
+
+.python-version
+uv.lock
+.venv
