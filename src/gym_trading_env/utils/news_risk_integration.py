@@ -1,8 +1,8 @@
 import datetime
 import pytz
 from typing import Dict, Any, Optional, List
-from news_risk_manager import NewsRiskManager
-from economic_calendar_api import EconomicCalendarAPI
+from .news_risk_manager import NewsRiskManager
+from .economic_calendar_api import EconomicCalendarAPI
 
 
 class NewsRiskIntegration:

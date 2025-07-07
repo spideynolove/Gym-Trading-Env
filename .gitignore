@@ -10,3 +10,6 @@ my_example.py
 *.egg-info
 *.pkl
 *.ai
+
+# user define
+materials/

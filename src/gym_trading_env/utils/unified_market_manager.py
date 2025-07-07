@@ -1,9 +1,9 @@
 import datetime
 import pytz
 from typing import Dict, Any, Optional, List, Tuple
-from event_impact_manager import EventImpactManager
-from enhanced_cot_manager import EnhancedCOTManager
-from news_risk_manager import NewsRiskManager, EconomicEvent
+from .event_impact_manager import EventImpactManager
+from .enhanced_cot_manager import EnhancedCOTManager
+from .news_risk_manager import NewsRiskManager, EconomicEvent
 
 
 class UnifiedMarketManager:

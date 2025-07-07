@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Optional, Set
 from dataclasses import dataclass
 from enum import Enum
 import math
-from news_risk_manager import EconomicEvent, EventImpact, EventCategory
+from .news_risk_manager import EconomicEvent, EventImpact, EventCategory
 
 
 class SpilloverType(Enum):
@@ -359,7 +359,7 @@ class EventImpactManager:
             'total_exposure': total_exposure,
             'risk_level': risk_level,
             'affected_pairs': affected_pairs,
-            'concentration_ratio': total_exposure / sum(abs(p) for p in positions.values()) if positions else 0,
+            'concentration_ratio': total_exposure / sum(abs(p) for p in positions.values()) if positions and sum(abs(p) for p in positions.values()) > 0 else 0,
             'recommendations': self._get_risk_recommendations(risk_level, total_exposure)
         }
     

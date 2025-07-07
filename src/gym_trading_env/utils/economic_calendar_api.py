@@ -3,7 +3,7 @@ import pytz
 import json
 from typing import Dict, List, Optional
 from dataclasses import asdict
-from news_risk_manager import EconomicEvent, EventImpact, EventCategory
+from .news_risk_manager import EconomicEvent, EventImpact, EventCategory
 
 
 class EconomicCalendarAPI:

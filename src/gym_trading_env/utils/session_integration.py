@@ -1,7 +1,7 @@
 import datetime
 import pytz
 from typing import Dict, Any, Optional
-from session_manager import SessionManager
+from .session_manager import SessionManager
 
 
 class SessionIntegration:

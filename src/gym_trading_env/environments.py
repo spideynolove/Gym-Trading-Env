@@ -9,6 +9,10 @@ from pathlib import Path
 from collections import Counter
 from .utils.history import History
 from .utils.portfolio import Portfolio, TargetPortfolio
+from .utils.session_manager import SessionManager
+from .utils.news_risk_manager import NewsRiskManager
+from .utils.correlation_manager import CorrelationManager
+from .utils.unified_market_manager import UnifiedMarketManager
 
 import tempfile, os
 import warnings
@@ -89,11 +93,15 @@ class TradingEnv(gym.Env):
                 max_episode_duration = 'max',
                 verbose = 1,
                 name = "Stock",
-                render_mode= "logs"
+                render_mode= "logs",
+                enable_enhanced_features = True,
+                currency_pair = "EUR/USD"
                 ):
         self.max_episode_duration = max_episode_duration
         self.name = name
         self.verbose = verbose
+        self.enable_enhanced_features = enable_enhanced_features
+        self.currency_pair = currency_pair
 
         self.positions = positions
         self.dynamic_feature_functions = dynamic_feature_functions
@@ -107,6 +115,24 @@ class TradingEnv(gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.max_episode_duration = max_episode_duration
         self.render_mode = render_mode
+        
+        # Initialize enhanced forex managers if enabled
+        if self.enable_enhanced_features:
+            self.session_manager = SessionManager()
+            self.news_risk_manager = NewsRiskManager()
+            self.correlation_manager = CorrelationManager()
+            self.unified_market_manager = UnifiedMarketManager(
+                event_impact_manager=None,
+                enhanced_cot_manager=None,
+                news_risk_manager=self.news_risk_manager
+            )
+            self._current_positions = {}
+        else:
+            self.session_manager = None
+            self.news_risk_manager = None
+            self.correlation_manager = None
+            self.unified_market_manager = None
+        
         self._set_df(df)
         
         self.action_space = spaces.Discrete(len(positions))
@@ -136,6 +162,25 @@ class TradingEnv(gym.Env):
             df[f"dynamic_feature__{i}"] = 0
             self._features_columns.append(f"dynamic_feature__{i}")
             self._nb_features += 1
+        
+        # Add enhanced forex features if enabled
+        if self.enable_enhanced_features:
+            enhanced_feature_names = [
+                'enhanced_cot_signal_strength',
+                'enhanced_event_risk_level', 
+                'enhanced_news_position_multiplier',
+                'enhanced_integrated_confidence',
+                'enhanced_cot_bearish_signal',
+                'enhanced_news_volatility_forecast',
+                'enhanced_session_liquidity',
+                'enhanced_session_volatility',
+                'enhanced_london_ny_overlap'
+            ]
+            
+            for feature_name in enhanced_feature_names:
+                df[feature_name] = 0.0
+                self._features_columns.append(feature_name)
+                self._nb_features += 1
 
         self.df = df
         self._obs_array = np.array(self.df[self._features_columns], dtype= np.float32)
@@ -150,14 +195,57 @@ class TradingEnv(gym.Env):
         return self._price_array[self._idx + delta]
     
     def _get_obs(self):
+        # Calculate standard dynamic features
         for i, dynamic_feature_function in enumerate(self.dynamic_feature_functions):
             self._obs_array[self._idx, self._nb_static_features + i] = dynamic_feature_function(self.historical_info)
+        
+        # Add enhanced forex features if enabled
+        if self.enable_enhanced_features:
+            self._update_enhanced_features()
 
         if self.windows is None:
             _step_index = self._idx
         else: 
             _step_index = np.arange(self._idx + 1 - self.windows , self._idx + 1)
         return self._obs_array[_step_index]
+    
+    def _update_enhanced_features(self):
+        """Update enhanced forex features in observation array"""
+        current_timestamp = self.df.index[self._idx]
+        
+        # Get enhanced features from unified market manager
+        if self.unified_market_manager:
+            enhanced_features = self.unified_market_manager.get_dynamic_unified_features(
+                self.currency_pair, self._current_positions, current_timestamp
+            )
+            
+            # Update enhanced feature columns in observation array
+            feature_offset = self._nb_static_features + len(self.dynamic_feature_functions)
+            
+            feature_mapping = {
+                'cot_signal_strength': 0,
+                'event_risk_level': 1,
+                'news_position_multiplier': 2,
+                'integrated_confidence': 3,
+                'cot_bearish_signal': 4,
+                'news_volatility_forecast': 5
+            }
+            
+            for feature_name, offset in feature_mapping.items():
+                if feature_offset + offset < self._obs_array.shape[1]:
+                    self._obs_array[self._idx, feature_offset + offset] = enhanced_features.get(feature_name, 0.0)
+        
+        # Add session-specific features
+        if self.session_manager:
+            session_info = self.session_manager.get_session_info(current_timestamp)
+            session_offset = self._nb_static_features + len(self.dynamic_feature_functions) + 6
+            
+            if session_offset < self._obs_array.shape[1]:
+                self._obs_array[self._idx, session_offset] = session_info['liquidity_score']
+            if session_offset + 1 < self._obs_array.shape[1]:
+                self._obs_array[self._idx, session_offset + 1] = session_info['volatility_multiplier']
+            if session_offset + 2 < self._obs_array.shape[1]:
+                self._obs_array[self._idx, session_offset + 2] = 1.0 if session_info['is_london_ny_overlap'] else 0.0
 
     
     def reset(self, seed = None, options=None, **kwargs):
@@ -230,8 +318,75 @@ class TradingEnv(gym.Env):
             'persistent': persistent
         }
     
+    def _apply_enhanced_trading_logic(self, position_index):
+        """Apply enhanced forex trading logic with session, news, and correlation awareness"""
+        if position_index is None:
+            return
+        
+        current_timestamp = self.df.index[self._idx]
+        intended_position = self.positions[position_index]
+        
+        # Update current positions tracking
+        self._current_positions[self.currency_pair] = self._position
+        
+        # 1. Session-aware position sizing
+        session_multiplier = self.session_manager.get_position_size_multiplier(current_timestamp)
+        
+        # 2. News risk assessment
+        should_restrict = self.news_risk_manager.should_avoid_trading(current_timestamp, self.currency_pair)
+        news_multiplier = self.news_risk_manager.get_position_size_multiplier(current_timestamp, self.currency_pair)
+        
+        # 3. Correlation-adjusted sizing
+        correlation_multiplier = 1.0
+        if hasattr(self, '_current_positions') and self._current_positions:
+            correlation_multiplier = self.correlation_manager.get_correlation_adjusted_position_size(
+                self.currency_pair, 1.0, self._current_positions
+            )
+        
+        # 4. Unified market analysis
+        if self.unified_market_manager:
+            unified_multiplier = self.unified_market_manager.get_optimal_position_size_integrated(
+                self.currency_pair, 1.0, self._current_positions, current_timestamp
+            )
+        else:
+            unified_multiplier = 1.0
+        
+        # Apply restrictions and adjustments
+        if should_restrict:
+            # Avoid trading during high-risk news events
+            adjusted_position = self._position  # Stay in current position
+        else:
+            # Calculate final position with all multipliers
+            base_position_change = intended_position - self._position
+            final_multiplier = session_multiplier * news_multiplier * correlation_multiplier * unified_multiplier
+            
+            # Apply constraints (don't exceed position limits)
+            adjusted_change = base_position_change * final_multiplier
+            adjusted_position = self._position + adjusted_change
+            
+            # Ensure position stays within allowed range
+            adjusted_position = max(min(self.positions), min(max(self.positions), adjusted_position))
+            
+            # Find closest allowed position
+            closest_position = min(self.positions, key=lambda x: abs(x - adjusted_position))
+            adjusted_position = closest_position
+        
+        # Execute the trade if position changed
+        if adjusted_position != self._position:
+            self._take_action(adjusted_position)
+        
+        # Update correlation manager with current price data
+        if hasattr(self, 'correlation_manager') and self.correlation_manager:
+            current_price = self._get_price()
+            self.correlation_manager.add_price_data(self.currency_pair, current_timestamp, current_price)
+    
     def step(self, position_index = None):
-        if position_index is not None: self._take_action(self.positions[position_index])
+        # Enhanced forex trading logic
+        if self.enable_enhanced_features:
+            self._apply_enhanced_trading_logic(position_index)
+        else:
+            if position_index is not None: self._take_action(self.positions[position_index])
+        
         self._idx += 1
         self._step += 1
 

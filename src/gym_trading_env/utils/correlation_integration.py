@@ -1,7 +1,7 @@
 import datetime
 import pytz
 from typing import Dict, Any, Optional, List, Tuple
-from correlation_manager import CorrelationManager
+from .correlation_manager import CorrelationManager
 
 
 class CorrelationIntegration:
