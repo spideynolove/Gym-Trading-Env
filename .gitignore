@@ -15,4 +15,7 @@ materials/
 
 .python-version
 uv.lock
+# *.txt
 .venv
+src/legacy/
+src/ingest/

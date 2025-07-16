@@ -9,10 +9,6 @@ from pathlib import Path
 from collections import Counter
 from .utils.history import History
 from .utils.portfolio import Portfolio, TargetPortfolio
-from .utils.session_manager import SessionManager
-from .utils.news_risk_manager import NewsRiskManager
-from .utils.correlation_manager import CorrelationManager
-from .utils.unified_market_manager import UnifiedMarketManager
 
 import tempfile, os
 import warnings
@@ -93,15 +89,11 @@ class TradingEnv(gym.Env):
                 max_episode_duration = 'max',
                 verbose = 1,
                 name = "Stock",
-                render_mode= "logs",
-                enable_enhanced_features = True,
-                currency_pair = "EUR/USD"
+                render_mode= "logs"
                 ):
         self.max_episode_duration = max_episode_duration
         self.name = name
         self.verbose = verbose
-        self.enable_enhanced_features = enable_enhanced_features
-        self.currency_pair = currency_pair
 
         self.positions = positions
         self.dynamic_feature_functions = dynamic_feature_functions
@@ -115,52 +107,6 @@ class TradingEnv(gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.max_episode_duration = max_episode_duration
         self.render_mode = render_mode
-        
-        # Initialize enhanced forex managers if enabled
-        if self.enable_enhanced_features:
-            self.session_manager = SessionManager()
-            self.news_risk_manager = NewsRiskManager()
-            self.correlation_manager = CorrelationManager()
-            self.unified_market_manager = UnifiedMarketManager(
-                event_impact_manager=None,
-                enhanced_cot_manager=None,
-                news_risk_manager=self.news_risk_manager
-            )
-            self._current_positions = {}
-            
-            # Initialize FA+TA+IA framework components with proper multi-asset loading
-            try:
-                from .utils.intermarket_dataset_manager import IntermarketDatasetManager
-                from .utils.fa_ta_ia_framework import FATAIAFramework
-                from .utils.murphy_principles_detector import MurphyPrinciplesDetector
-                from .utils.example_scenarios_engine import ExampleScenariosEngine
-                
-                self.intermarket_dataset_manager = IntermarketDatasetManager()
-                # Load multi-asset datasets if base directory exists
-                base_data_dir = getattr(self, 'base_data_dir', 'data')
-                try:
-                    self.intermarket_dataset_manager.load_multi_asset_datasets(base_data_dir)
-                except (FileNotFoundError, OSError):
-                    pass  # Continue without multi-asset data if not available
-                
-                self.fa_ta_ia_framework = FATAIAFramework(self.intermarket_dataset_manager)
-                self.murphy_principles_detector = MurphyPrinciplesDetector(self.intermarket_dataset_manager)
-                self.example_scenarios_engine = ExampleScenariosEngine(self.intermarket_dataset_manager, self.fa_ta_ia_framework)
-            except ImportError:
-                self.intermarket_dataset_manager = None
-                self.fa_ta_ia_framework = None
-                self.murphy_principles_detector = None
-                self.example_scenarios_engine = None
-        else:
-            self.session_manager = None
-            self.news_risk_manager = None
-            self.correlation_manager = None
-            self.unified_market_manager = None
-            self.intermarket_dataset_manager = None
-            self.fa_ta_ia_framework = None
-            self.murphy_principles_detector = None
-            self.example_scenarios_engine = None
-        
         self._set_df(df)
         
         self.action_space = spaces.Discrete(len(positions))
@@ -190,33 +136,6 @@ class TradingEnv(gym.Env):
             df[f"dynamic_feature__{i}"] = 0
             self._features_columns.append(f"dynamic_feature__{i}")
             self._nb_features += 1
-        
-        # Add enhanced forex features if enabled
-        if self.enable_enhanced_features:
-            enhanced_feature_names = [
-                'enhanced_cot_signal_strength',
-                'enhanced_event_risk_level', 
-                'enhanced_news_position_multiplier',
-                'enhanced_integrated_confidence',
-                'enhanced_cot_bearish_signal',
-                'enhanced_news_volatility_forecast',
-                'enhanced_session_liquidity',
-                'enhanced_session_volatility',
-                'enhanced_london_ny_overlap',
-                'fa_sentiment_score',
-                'fa_currency_strength',
-                'ta_trend_strength',
-                'ta_entry_signal_strength',
-                'ia_cross_market_confirmation',
-                'ia_murphy_principles_score',
-                'integrated_trade_confidence',
-                'integrated_risk_level'
-            ]
-            
-            for feature_name in enhanced_feature_names:
-                df[feature_name] = 0.0
-                self._features_columns.append(feature_name)
-                self._nb_features += 1
 
         self.df = df
         self._obs_array = np.array(self.df[self._features_columns], dtype= np.float32)
@@ -231,168 +150,14 @@ class TradingEnv(gym.Env):
         return self._price_array[self._idx + delta]
     
     def _get_obs(self):
-        # Calculate standard dynamic features
         for i, dynamic_feature_function in enumerate(self.dynamic_feature_functions):
             self._obs_array[self._idx, self._nb_static_features + i] = dynamic_feature_function(self.historical_info)
-        
-        # Add enhanced forex features if enabled
-        if self.enable_enhanced_features:
-            self._update_enhanced_features()
 
         if self.windows is None:
             _step_index = self._idx
         else: 
             _step_index = np.arange(self._idx + 1 - self.windows , self._idx + 1)
         return self._obs_array[_step_index]
-    
-    def _update_enhanced_features(self):
-        """Update enhanced forex features in observation array"""
-        current_timestamp = self.df.index[self._idx]
-        
-        # Get enhanced features from unified market manager
-        if self.unified_market_manager:
-            enhanced_features = self.unified_market_manager.get_dynamic_unified_features(
-                self.currency_pair, self._current_positions, current_timestamp
-            )
-            
-            # Update enhanced feature columns in observation array
-            feature_offset = self._nb_static_features + len(self.dynamic_feature_functions)
-            
-            feature_mapping = {
-                'cot_signal_strength': 0,
-                'event_risk_level': 1,
-                'news_position_multiplier': 2,
-                'integrated_confidence': 3,
-                'cot_bearish_signal': 4,
-                'news_volatility_forecast': 5
-            }
-            
-            for feature_name, offset in feature_mapping.items():
-                if feature_offset + offset < self._obs_array.shape[1]:
-                    self._obs_array[self._idx, feature_offset + offset] = enhanced_features.get(feature_name, 0.0)
-        
-        # Add session-specific features
-        if self.session_manager:
-            session_info = self.session_manager.get_session_info(current_timestamp)
-            session_offset = self._nb_static_features + len(self.dynamic_feature_functions) + 6
-            
-            if session_offset < self._obs_array.shape[1]:
-                self._obs_array[self._idx, session_offset] = session_info['liquidity_score']
-            if session_offset + 1 < self._obs_array.shape[1]:
-                self._obs_array[self._idx, session_offset + 1] = session_info['volatility_multiplier']
-            if session_offset + 2 < self._obs_array.shape[1]:
-                self._obs_array[self._idx, session_offset + 2] = 1.0 if session_info['is_london_ny_overlap'] else 0.0
-        
-        # Add FA+TA+IA framework features
-        if hasattr(self, 'fa_ta_ia_framework') and self.fa_ta_ia_framework:
-            fa_ta_ia_features = self._calculate_fa_ta_ia_features(current_timestamp)
-            fa_ta_ia_offset = self._nb_static_features + len(self.dynamic_feature_functions) + 9
-            
-            fa_ta_ia_mapping = {
-                'fa_sentiment_score': 0,
-                'fa_currency_strength': 1,
-                'ta_trend_strength': 2,
-                'ta_entry_signal_strength': 3,
-                'ia_cross_market_confirmation': 4,
-                'ia_murphy_principles_score': 5,
-                'integrated_trade_confidence': 6,
-                'integrated_risk_level': 7
-            }
-            
-            for feature_name, offset in fa_ta_ia_mapping.items():
-                if fa_ta_ia_offset + offset < self._obs_array.shape[1]:
-                    self._obs_array[self._idx, fa_ta_ia_offset + offset] = fa_ta_ia_features.get(feature_name, 0.0)
-    
-    def _calculate_fa_ta_ia_features(self, timestamp):
-        """Calculate FA+TA+IA framework features for current timestamp"""
-        if not self.fa_ta_ia_framework:
-            return {}
-        
-        try:
-            # Get current market data for analysis
-            current_data = self.df.iloc[max(0, self._idx-100):self._idx+1]
-            
-            # Get real economic indicators from existing NewsRiskManager
-            from .utils.fa_ta_ia_framework import EconomicIndicator, CurrencyProfile
-            import datetime
-            
-            real_indicators = []
-            
-            if self.news_risk_manager:
-                try:
-                    # Get upcoming economic events from existing NewsRiskManager
-                    upcoming_events = self.news_risk_manager.get_upcoming_events(timestamp, hours_ahead=168)  # 1 week
-                    
-                    # Convert events to EconomicIndicator format
-                    for event in upcoming_events:
-                        if hasattr(event, 'currency') and hasattr(event, 'event_name'):
-                            try:
-                                currency_profile = CurrencyProfile(event.currency)
-                                economic_indicator = EconomicIndicator(
-                                    currency=currency_profile,
-                                    indicator_name=event.event_name,
-                                    impact_level=getattr(event, 'impact_level', 'Medium'),
-                                    release_frequency=getattr(event, 'frequency', 'Unknown'),
-                                    expected_value=getattr(event, 'forecast', 0.0),
-                                    actual_value=getattr(event, 'actual', getattr(event, 'forecast', 0.0)),
-                                    previous_value=getattr(event, 'previous', 0.0),
-                                    timestamp=timestamp
-                                )
-                                real_indicators.append(economic_indicator)
-                            except (ValueError, AttributeError):
-                                continue  # Skip invalid events
-                except Exception:
-                    pass  # Continue with empty list if NewsRiskManager fails
-            
-            # Fallback to basic indicators if no real data available
-            if not real_indicators:
-                real_indicators = [
-                    EconomicIndicator(
-                        currency=CurrencyProfile.USD,
-                        indicator_name='Market_Sentiment',
-                        impact_level='Medium',
-                        release_frequency='Daily',
-                        expected_value=0.0,
-                        actual_value=0.0,
-                        previous_value=0.0,
-                        timestamp=timestamp
-                    )
-                ]
-            
-            # Perform comprehensive analysis with real indicators
-            analysis = self.fa_ta_ia_framework.comprehensive_analysis(
-                self.currency_pair.replace('/', ''),
-                real_indicators
-            )
-            
-            # Extract features from analysis
-            fa_features = analysis.get('fa', {})
-            ta_features = analysis.get('ta', {})
-            ia_features = analysis.get('ia', {})
-            integrated_signals = analysis.get('integrated_signals', {})
-            
-            return {
-                'fa_sentiment_score': fa_features.get('relative_strength', 0.0),
-                'fa_currency_strength': abs(fa_features.get('relative_strength', 0.0)),
-                'ta_trend_strength': 1.0 if ta_features.get('trend') == 'Uptrend' else -1.0 if ta_features.get('trend') == 'Downtrend' else 0.0,
-                'ta_entry_signal_strength': len(ta_features.get('entry_signals', [])) * 0.2,
-                'ia_cross_market_confirmation': 1.0 if integrated_signals.get('cross_market_confirmation', False) else 0.0,
-                'ia_murphy_principles_score': len(ia_features.get('murphy_principles', {})) * 0.3,
-                'integrated_trade_confidence': integrated_signals.get('confidence', 0.0),
-                'integrated_risk_level': {'low': 0.2, 'medium': 0.5, 'high': 0.8}.get(integrated_signals.get('risk_level', 'medium'), 0.5)
-            }
-        except Exception as e:
-            # Return default values if analysis fails
-            return {
-                'fa_sentiment_score': 0.0,
-                'fa_currency_strength': 0.0,
-                'ta_trend_strength': 0.0,
-                'ta_entry_signal_strength': 0.0,
-                'ia_cross_market_confirmation': 0.0,
-                'ia_murphy_principles_score': 0.0,
-                'integrated_trade_confidence': 0.0,
-                'integrated_risk_level': 0.5
-            }
 
     
     def reset(self, seed = None, options=None, **kwargs):
@@ -465,127 +230,8 @@ class TradingEnv(gym.Env):
             'persistent': persistent
         }
     
-    def _apply_enhanced_trading_logic(self, position_index):
-        """Apply enhanced forex trading logic with session, news, and correlation awareness"""
-        if position_index is None:
-            return
-        
-        current_timestamp = self.df.index[self._idx]
-        intended_position = self.positions[position_index]
-        
-        # Update current positions tracking
-        self._current_positions[self.currency_pair] = self._position
-        
-        # 1. Session-aware position sizing
-        session_multiplier = self.session_manager.get_position_size_multiplier(current_timestamp)
-        
-        # 2. News risk assessment
-        should_restrict = self.news_risk_manager.should_avoid_trading(current_timestamp, self.currency_pair)
-        news_multiplier = self.news_risk_manager.get_position_size_multiplier(current_timestamp, self.currency_pair)
-        
-        # 3. Correlation-adjusted sizing
-        correlation_multiplier = 1.0
-        if hasattr(self, '_current_positions') and self._current_positions:
-            correlation_multiplier = self.correlation_manager.get_correlation_adjusted_position_size(
-                self.currency_pair, 1.0, self._current_positions
-            )
-        
-        # 4. Unified market analysis
-        if self.unified_market_manager:
-            unified_multiplier = self.unified_market_manager.get_optimal_position_size_integrated(
-                self.currency_pair, 1.0, self._current_positions, current_timestamp
-            )
-        else:
-            unified_multiplier = 1.0
-        
-        # 5. FA+TA+IA framework analysis
-        fa_ta_ia_multiplier = 1.0
-        if self.fa_ta_ia_framework:
-            fa_ta_ia_features = self._calculate_fa_ta_ia_features(current_timestamp)
-            
-            # Apply FA+TA+IA based position sizing
-            trade_confidence = fa_ta_ia_features.get('integrated_trade_confidence', 0.0)
-            risk_level = fa_ta_ia_features.get('integrated_risk_level', 0.5)
-            
-            # Adjust position size based on confidence and risk
-            if trade_confidence > 0.7 and risk_level < 0.6:
-                fa_ta_ia_multiplier = 1.2  # Increase position size for high confidence, low risk
-            elif trade_confidence < 0.3 or risk_level > 0.7:
-                fa_ta_ia_multiplier = 0.5  # Reduce position size for low confidence or high risk
-            
-            # Apply cross-market confirmation
-            if not fa_ta_ia_features.get('ia_cross_market_confirmation', False):
-                fa_ta_ia_multiplier *= 0.8  # Reduce size without cross-market confirmation
-        
-        # 6. Murphy principles multiplier using existing detector
-        murphy_multiplier = 1.0
-        if self.murphy_principles_detector:
-            try:
-                murphy_analysis = self.murphy_principles_detector.detect_all_principles()
-                # Calculate average principle strength
-                principle_strengths = []
-                for principle_data in murphy_analysis.values():
-                    if hasattr(principle_data, 'signal_strength'):
-                        principle_strengths.append(principle_data.signal_strength)
-                
-                if principle_strengths:
-                    avg_strength = sum(principle_strengths) / len(principle_strengths)
-                    murphy_multiplier = 0.8 + (avg_strength * 0.4)  # Range 0.8-1.2
-            except Exception:
-                murphy_multiplier = 1.0
-        
-        # 7. Scenario multiplier using existing scenarios engine
-        scenario_multiplier = 1.0
-        if self.example_scenarios_engine:
-            try:
-                active_scenarios = self.example_scenarios_engine.detect_all_scenarios()
-                high_confidence_scenarios = [s for s in active_scenarios.values() 
-                                           if hasattr(s, 'confidence') and s.confidence > 0.7]
-                
-                if high_confidence_scenarios:
-                    scenario_multiplier = 1.1  # Boost for high-confidence scenarios
-                elif any(hasattr(s, 'confidence') and s.confidence > 0.5 for s in active_scenarios.values()):
-                    scenario_multiplier = 1.05  # Small boost for medium-confidence scenarios
-            except Exception:
-                scenario_multiplier = 1.0
-        
-        # Apply restrictions and adjustments
-        if should_restrict:
-            # Avoid trading during high-risk news events
-            adjusted_position = self._position  # Stay in current position
-        else:
-            # Calculate final position with all multipliers (now 6 total)
-            base_position_change = intended_position - self._position
-            final_multiplier = (session_multiplier * news_multiplier * correlation_multiplier * 
-                              unified_multiplier * fa_ta_ia_multiplier * murphy_multiplier * scenario_multiplier)
-            
-            # Apply constraints (don't exceed position limits)
-            adjusted_change = base_position_change * final_multiplier
-            adjusted_position = self._position + adjusted_change
-            
-            # Ensure position stays within allowed range
-            adjusted_position = max(min(self.positions), min(max(self.positions), adjusted_position))
-            
-            # Find closest allowed position
-            closest_position = min(self.positions, key=lambda x: abs(x - adjusted_position))
-            adjusted_position = closest_position
-        
-        # Execute the trade if position changed
-        if adjusted_position != self._position:
-            self._take_action(adjusted_position)
-        
-        # Update correlation manager with current price data
-        if hasattr(self, 'correlation_manager') and self.correlation_manager:
-            current_price = self._get_price()
-            self.correlation_manager.add_price_data(self.currency_pair, current_timestamp, current_price)
-    
     def step(self, position_index = None):
-        # Enhanced forex trading logic
-        if self.enable_enhanced_features:
-            self._apply_enhanced_trading_logic(position_index)
-        else:
-            if position_index is not None: self._take_action(self.positions[position_index])
-        
+        if position_index is not None: self._take_action(self.positions[position_index])
         self._idx += 1
         self._step += 1
 
@@ -729,23 +375,6 @@ class MultiDatasetTradingEnv(TradingEnv):
         self.dataset_pathes = glob.glob(self.dataset_dir)
         if len(self.dataset_pathes) == 0:raise FileNotFoundError(f"No dataset found with the path : {self.dataset_dir}")
         self.dataset_nb_uses = np.zeros(shape=(len(self.dataset_pathes), ))
-        
-        # Enhanced multi-asset coordination using existing IntermarketDatasetManager
-        if kwargs.get('enable_enhanced_features', True):
-            try:
-                from .utils.intermarket_dataset_manager import IntermarketDatasetManager
-                self.multi_asset_coordination = IntermarketDatasetManager()
-                # Try to load multi-asset datasets for coordinated analysis
-                base_data_dir = getattr(self, 'base_data_dir', self.dataset_dir.rsplit('/', 1)[0] if '/' in self.dataset_dir else 'data')
-                try:
-                    self.multi_asset_coordination.load_multi_asset_datasets(base_data_dir)
-                except (FileNotFoundError, OSError):
-                    pass  # Continue without multi-asset data if not available
-            except ImportError:
-                self.multi_asset_coordination = None
-        else:
-            self.multi_asset_coordination = None
-        
         super().__init__(self.next_dataset(), *args, **kwargs)
 
     def next_dataset(self):
