@@ -1,6 +1,4 @@
-import numpy as np
-import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict
 
 class RiskTrigger:
     def __init__(self, name: str):

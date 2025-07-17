@@ -343,4 +343,3 @@ def charts(df, lines = []):
         )
     )
     return grid_chart
-    grid_chart.render("render.html")

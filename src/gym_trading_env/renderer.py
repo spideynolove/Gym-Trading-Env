@@ -1,8 +1,4 @@
-from flask import Flask, render_template, jsonify, make_response
-
-from pyecharts.globals import CurrentConfig
-from pyecharts import options as opts
-from pyecharts.charts import Bar
+from flask import Flask, render_template, jsonify
 
 from .utils.charts import charts
 from pathlib import Path 

@@ -5,12 +5,10 @@ import numpy as np
 import datetime
 import glob
 from pathlib import Path    
-
-from collections import Counter
 from .utils.history import History
-from .utils.portfolio import Portfolio, TargetPortfolio
 
-import tempfile, os
+from .utils.portfolio import Portfolio, TargetPortfolio
+import os
 import warnings
 warnings.filterwarnings("error")
 

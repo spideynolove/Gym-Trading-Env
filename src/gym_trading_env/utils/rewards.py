@@ -1,6 +1,4 @@
 import numpy as np
-import pandas as pd
-from typing import Optional
 
 def safe_log_return(history, floor: float = 1e-4, clip_range: tuple = (-1.0, 1.0)) -> float:
     if len(history) < 2:

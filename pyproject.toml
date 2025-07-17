@@ -24,7 +24,8 @@ dependencies = [
   "flask>=2.2.3",
   "pyecharts>=2.0.2",
   "ccxt==3.0.59",
-  "nest_asyncio"
+  "nest_asyncio",
+  "forex-python>=1.9.2",
 ]
 
 [project.urls]
