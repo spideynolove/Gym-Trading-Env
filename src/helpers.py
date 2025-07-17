@@ -4,8 +4,11 @@ import numpy as np
 from typing import List, Dict, Union, Any
 
 class LazyCallable:
+    _cache = {}
+    
     def __init__(self, name):
-        self.n, self.f = name, None
+        self.n = name
+        self.f = LazyCallable._cache.get(name)
     
     def __call__(self, *a, **k):
         if self.f is None:
@@ -13,6 +16,7 @@ class LazyCallable:
             if modn not in sys.modules:
                 __import__(modn)
             self.f = getattr(sys.modules[modn], funcn)
+            LazyCallable._cache[self.n] = self.f
         return self.f(*a, **k)
 
 class TechnicalIndicators:

@@ -19,3 +19,8 @@ uv.lock
 .venv
 src/legacy/
 src/ingest/
+gym_trading_env.txt
+readme_images/
+examples/
+docs/
+temp/
