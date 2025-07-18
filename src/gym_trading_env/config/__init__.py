@@ -1,0 +1,1 @@
+# Configuration module for gym_trading_env

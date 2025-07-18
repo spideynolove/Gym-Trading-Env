@@ -170,3 +170,213 @@ This enhanced version includes professional-grade intermarket analysis capabilit
 - Economic calendar event processing
 
 Perfect for advanced forex trading research, institutional algorithm development, and sophisticated ML/RL applications.
+
+---
+
+# TradingEnv-v2: Session-Aware Forex Trading Environment
+
+## Overview
+
+TradingEnv-v2 extends the original TradingEnv with realistic forex market microstructure features while maintaining full backward compatibility with v1.
+
+## Key Features
+
+### 1. Session-Based Spread Modeling
+- **Asian Session**: 2.5x base spread (wider, range-bound)
+- **London-NY Overlap**: 0.75x base spread (tight, high volatility)
+- **London Session**: 1.2x base spread
+- **New York Session**: 1.0x base spread (baseline)
+- **Sydney Session**: 1.8x base spread
+- **Quiet Hours**: 3.0x base spread (low liquidity)
+
+### 2. Economic Calendar Integration
+- Configurable news impact levels (high, moderate, low)
+- Automatic trading avoidance during high-impact events
+- Customizable buffer periods around news events
+- JSON-based event configuration (no hardcoded events)
+
+### 3. Enhanced Features
+- Session-aware transaction costs
+- News-filtered training data
+- Real-time session and news information in observations
+- Session-specific performance metrics
+
+## Usage
+
+### Basic Usage (Backward Compatible)
+
+```python
+import gymnasium as gym
+import pandas as pd
+
+# v1 - Original environment (unchanged)
+env_v1 = gym.make('TradingEnv-v1', df=df)
+
+# v2 - Session-aware environment
+env_v2 = gym.make('TradingEnv-v2', 
+                  df=df,
+                  session_aware=True,
+                  base_spread=0.0001)
+```
+
+### With News Filtering
+
+```python
+from gym_trading_env.utils.news import NewsManager
+
+# Load economic calendar
+news_manager = NewsManager()
+news_manager.load_economic_calendar(economic_calendar_df)
+
+# Create environment with news filtering
+env_v2 = gym.make('TradingEnv-v2',
+                  df=df,
+                  session_aware=True,
+                  base_spread=0.0001,
+                  news_manager=news_manager,
+                  avoid_news_levels=['high'])
+```
+
+### Custom News Configuration
+
+```python
+# Custom news events configuration
+custom_config = {
+    "high_impact_events": [
+        "Non-Farm Payrolls",
+        "FOMC",
+        "ECB Interest Rate Decision"
+    ],
+    "buffer_settings": {
+        "high_impact_minutes": 30,
+        "moderate_impact_minutes": 15
+    }
+}
+
+# Save to JSON file and use
+news_manager = NewsManager(config_path="custom_news_config.json")
+```
+
+## Environment Registration
+
+```python
+# v1 environments (backward compatible)
+gym.make('TradingEnv')      # Original
+gym.make('TradingEnv-v1')   # Explicit v1
+
+# v2 environment (session-aware)
+gym.make('TradingEnv-v2')   # Session-aware with news filtering
+```
+
+## Configuration Files
+
+### News Events Configuration (`src/gym_trading_env/config/news_events.json`)
+
+```json
+{
+  "high_impact_events": [
+    "Non-Farm Payrolls",
+    "FOMC",
+    "ECB Interest Rate Decision"
+  ],
+  "volatility_levels": {
+    "high": ["High Volatility Expected"],
+    "moderate": ["Moderate Volatility Expected"]
+  },
+  "buffer_settings": {
+    "high_impact_minutes": 30,
+    "moderate_impact_minutes": 15
+  }
+}
+```
+
+## Economic Calendar Data Format
+
+Expected CSV format:
+```csv
+Date,Time_NY,Country,Volatility,Event_Description,Evaluation,Data_Format,Actual,Forecast,Previous
+2023/01/01,08:30:00,United States,High Volatility Expected,Non-Farm Payrolls,,,,,
+2023/01/01,10:00:00,United Kingdom,Moderate Volatility Expected,BoE Interest Rate Decision,,,,,
+```
+
+## Session Information in Observations
+
+v2 environments include additional session and news features:
+
+```python
+obs, reward, done, truncated, info = env.step(action)
+
+# Session features
+session_info = {
+    'session_spread_multiplier': info['session_spread_multiplier'],
+    'session_high_volatility': info['session_high_volatility'],
+    'session_london_ny_overlap': info['session_london_ny_overlap'],
+    'session_asian': info['session_asian']
+}
+
+# News features  
+news_info = {
+    'avoid_high_impact': info['avoid_high_impact'],
+    'next_news_minutes': info['next_news_minutes'],
+    'next_news_high_impact': info['next_news_high_impact']
+}
+```
+
+## Performance Considerations
+
+- **Maintains <100ms observation generation**
+- **Session lookup**: ~1ms overhead per step
+- **News filtering**: Applied during data preprocessing
+- **Memory usage**: Same as v1 (optimized History class)
+
+## Migration from v1 to v2
+
+### No Changes Required
+```python
+# Existing v1 code continues to work
+env = gym.make('TradingEnv', df=df)
+```
+
+### Enable Session Awareness
+```python
+# Add session awareness
+env = gym.make('TradingEnv-v2', 
+               df=df,
+               session_aware=True,
+               base_spread=0.0001)
+```
+
+### Full Feature Set
+```python
+# Complete v2 setup with news filtering
+env = gym.make('TradingEnv-v2',
+               df=df,
+               session_aware=True,
+               base_spread=0.0001,
+               news_manager=news_manager,
+               avoid_news_levels=['high', 'moderate'])
+```
+
+## Session Statistics
+
+```python
+# Get session-specific performance metrics
+session_stats = env.get_session_stats()
+print(f"Average spread multiplier: {session_stats['avg_spread_multiplier']}")
+print(f"High volatility periods: {session_stats['high_volatility_periods']}")
+print(f"Returns during high volatility: {session_stats['avg_return_high_vol']}")
+```
+
+## Examples
+
+See `examples/trading_env_v2_example.py` for complete usage examples.
+
+## Architecture
+
+- **TradingEnv-v1**: Original environment (unchanged)
+- **TradingEnv-v2**: Inherits from v1, adds session and news features
+- **SessionManager**: Handles session-based spread calculations
+- **NewsManager**: Manages economic calendar and news filtering
+- **Configuration**: JSON-based, no hardcoded events
+
+This design ensures clean separation between v1 stability and v2 enhancements while maintaining full backward compatibility.

@@ -6,6 +6,8 @@ import datetime
 import glob
 from pathlib import Path    
 from .utils.history import History
+from .utils.sessions import SessionManager
+from .utils.news import NewsManager
 
 from .utils.portfolio import Portfolio, TargetPortfolio
 import os
@@ -396,4 +398,288 @@ class MultiDatasetTradingEnv(TradingEnv):
             )
         if self.verbose > 1: print(f"Selected dataset {self.name} ...")
         return super().reset(seed = seed, options = options, **kwargs)
+
+
+class TradingEnvV2(TradingEnv):
+    """
+    (Inherits from TradingEnv) A session-aware TradingEnv environment with forex market microstructure features.
+    It provides realistic spread modeling based on trading sessions and economic calendar integration.
+    This environment maintains full backward compatibility with TradingEnv while adding session dynamics.
+
+    It is recommended to use it this way :
+
+    .. code-block:: python
+
+        import gymnasium as gym
+        import gym_trading_env
+        from gym_trading_env.utils.news import NewsManager
+        
+        # Load economic calendar
+        news_manager = NewsManager()
+        news_manager.load_economic_calendar(economic_calendar_df)
+        
+        env = gym.make('TradingEnv-v2',
+            df=forex_data,
+            session_aware=True,
+            base_spread=0.0001,
+            news_manager=news_manager,
+            avoid_news_levels=['high']
+        )
+
+    :param df: The market DataFrame. It must contain 'open', 'high', 'low', 'close'. Index must be DatetimeIndex. Your desired inputs need to contain 'feature' in their column name : this way, they will be returned as observation at each step.
+    :type df: pandas.DataFrame
+
+    :param positions: List of the positions allowed by the environment.
+    :type positions: optional - list[int or float]
+
+    :param dynamic_feature_functions: The list of the dynamic features functions. By default, two dynamic features are added :
     
+        * the last position taken by the agent.
+        * the real position of the portfolio (that varies according to the price fluctuations)
+
+    :type dynamic_feature_functions: optional - list   
+
+    :param reward_function: Take the History object of the environment and must return a float.
+    :type reward_function: optional - function<History->float>
+
+    :param windows: Default is None. If it is set to an int: N, every step observation will return the past N observations. It is recommended for Recurrent Neural Network based Agents.
+    :type windows: optional - None or int
+
+    :param trading_fees: Transaction trading fees (buy and sell operations). eg: 0.01 corresponds to 1% fees. Note: In session-aware mode, this becomes minimum trading fees, actual fees are calculated based on session spreads.
+    :type trading_fees: optional - float
+
+    :param borrow_interest_rate: Borrow interest rate per step (only when position < 0 or position > 1). eg: 0.01 corresponds to 1% borrow interest rate per STEP ; if your know that your borrow interest rate is 0.05% per day and that your timestep is 1 hour, you need to divide it by 24 -> 0.05/100/24.
+    :type borrow_interest_rate: optional - float
+
+    :param portfolio_initial_value: Initial valuation of the portfolio.
+    :type portfolio_initial_value: float or int
+
+    :param initial_position: You can specify the initial position of the environment or set it to 'random'. It must contained in the list parameter 'positions'.
+    :type initial_position: optional - float or int
+
+    :param max_episode_duration: If a integer value is used, each episode will be truncated after reaching the desired max duration in steps (by returning `truncated` as `True`). When using a max duration, each episode will start at a random starting point.
+    :type max_episode_duration: optional - int or 'max'
+
+    :param verbose: If 0, no log is outputted. If 1, the env send episode result logs.
+    :type verbose: optional - int
+    
+    :param name: The name of the environment (eg. 'EUR/USD')
+    :type name: optional - str
+
+    :param render_mode: Rendering mode for the environment.
+    :type render_mode: optional - str
+
+    :param session_aware: Enable session-based spread modeling. When True, trading costs vary based on forex trading sessions (Asian, London, NY overlap, etc.).
+    :type session_aware: optional - bool
+
+    :param base_spread: Base spread in decimal format (e.g., 0.0001 = 1 pip for EUR/USD). This gets multiplied by session-specific factors.
+    :type base_spread: optional - float
+
+    :param news_manager: NewsManager instance for economic calendar integration. Use this to filter trading during high-impact news events.
+    :type news_manager: optional - NewsManager
+
+    :param avoid_news_levels: List of news impact levels to avoid trading during. Options: ['high', 'moderate', 'low'].
+    :type avoid_news_levels: optional - list[str]
+    """
+    def __init__(self,
+                df: pd.DataFrame,
+                positions: list = [0, 1],
+                dynamic_feature_functions = [dynamic_feature_last_position_taken, dynamic_feature_real_position],
+                reward_function = basic_reward_function,
+                windows = None,
+                trading_fees = 0,
+                borrow_interest_rate = 0,
+                portfolio_initial_value = 1000,
+                initial_position = 'random',
+                max_episode_duration = 'max',
+                verbose = 1,
+                name = "Stock",
+                render_mode = "logs",
+                session_aware = True,
+                base_spread = 0.0001,
+                news_manager = None,
+                avoid_news_levels = ['high']):
+        
+        self.session_aware = session_aware
+        self.base_spread = base_spread
+        self.news_manager = news_manager
+        self.avoid_news_levels = avoid_news_levels
+        
+        if session_aware:
+            self.session_manager = SessionManager()
+        else:
+            self.session_manager = None
+            
+        if news_manager is not None:
+            df = news_manager.filter_trading_data(df, impact_levels=avoid_news_levels)
+        
+        super().__init__(
+            df=df,
+            positions=positions,
+            dynamic_feature_functions=dynamic_feature_functions,
+            reward_function=reward_function,
+            windows=windows,
+            trading_fees=trading_fees,
+            borrow_interest_rate=borrow_interest_rate,
+            portfolio_initial_value=portfolio_initial_value,
+            initial_position=initial_position,
+            max_episode_duration=max_episode_duration,
+            verbose=verbose,
+            name=name,
+            render_mode=render_mode
+        )
+    
+    def _get_current_timestamp(self) -> pd.Timestamp:
+        return pd.Timestamp(self.df.index.values[self._idx])
+    
+    def _get_dynamic_spread(self) -> float:
+        if not self.session_aware or self.session_manager is None:
+            return self.base_spread
+        
+        current_time = self._get_current_timestamp()
+        return self.session_manager.get_current_spread(current_time, self.base_spread)
+    
+    def _get_dynamic_trading_fees(self) -> float:
+        if not self.session_aware:
+            return self.trading_fees
+        
+        dynamic_spread = self._get_dynamic_spread()
+        return max(self.trading_fees, dynamic_spread)
+    
+    def _should_avoid_trading(self) -> bool:
+        if self.news_manager is None:
+            return False
+        
+        current_time = self._get_current_timestamp()
+        return self.news_manager.should_avoid_trading(current_time, self.avoid_news_levels)
+    
+    def _trade(self, position, price = None):
+        if self._should_avoid_trading():
+            return
+            
+        dynamic_fees = self._get_dynamic_trading_fees()
+        
+        self._portfolio.trade_to_position(
+            position, 
+            price = self._get_price() if price is None else price, 
+            trading_fees = dynamic_fees
+        )
+        self._position = position
+        return
+    
+    def _get_session_features(self) -> dict:
+        if not self.session_aware or self.session_manager is None:
+            return {}
+        
+        current_time = self._get_current_timestamp()
+        session_info = self.session_manager.get_session_info(current_time)
+        
+        features = {}
+        features['session_spread_multiplier'] = session_info['spread_multiplier']
+        features['session_high_volatility'] = int(session_info['high_volatility'])
+        features['session_london_ny_overlap'] = int(session_info['session'] == 'london_ny_overlap')
+        features['session_asian'] = int(session_info['session'] == 'asian')
+        features['session_london'] = int(session_info['session'] == 'london')
+        features['session_new_york'] = int(session_info['session'] == 'new_york')
+        
+        return features
+    
+    def _get_news_features(self) -> dict:
+        if self.news_manager is None:
+            return {}
+        
+        current_time = self._get_current_timestamp()
+        
+        features = {}
+        features['avoid_high_impact'] = int(self.news_manager.should_avoid_trading(current_time, ['high']))
+        features['avoid_moderate_impact'] = int(self.news_manager.should_avoid_trading(current_time, ['moderate']))
+        
+        next_news = self.news_manager.get_next_news_event(current_time, ['high', 'moderate'])
+        features['next_news_minutes'] = next_news['minutes_until'] if next_news else 999
+        features['next_news_high_impact'] = int(next_news['impact_level'] == 'high' if next_news else False)
+        
+        return features
+    
+    def step(self, position_index = None):
+        if position_index is not None and not self._should_avoid_trading():
+            self._take_action(self.positions[position_index])
+            
+        self._idx += 1
+        self._step += 1
+
+        self._take_action_order_limit()
+        price = self._get_price()
+        self._portfolio.update_interest(borrow_interest_rate= self.borrow_interest_rate)
+        portfolio_value = self._portfolio.valorisation(price)
+        portfolio_distribution = self._portfolio.get_portfolio_distribution()
+
+        done, truncated = False, False
+
+        if portfolio_value <= 0:
+            done = True
+        if self._idx >= len(self.df) - 1:
+            truncated = True
+        if isinstance(self.max_episode_duration,int) and self._step >= self.max_episode_duration - 1:
+            truncated = True
+
+        info_dict = dict(zip(self._info_columns, self._info_array[self._idx]))
+        session_features = self._get_session_features()
+        news_features = self._get_news_features()
+        
+        info_dict.update(session_features)
+        info_dict.update(news_features)
+        
+        self.historical_info.add(
+            idx = self._idx,
+            step = self._step,
+            date = self.df.index.values[self._idx],
+            position_index = position_index,
+            position = self._position,
+            real_position = self._portfolio.real_position(price),
+            data = info_dict,
+            portfolio_valuation = portfolio_value,
+            portfolio_distribution = portfolio_distribution, 
+            reward = 0
+        )
+        
+        if not done:
+            reward = self.reward_function(self.historical_info)
+            self.historical_info["reward", -1] = reward
+
+        if done or truncated:
+            self.calculate_metrics()
+            self.log()
+            
+        return self._get_obs(), self.historical_info["reward", -1], done, truncated, self.historical_info[-1]
+    
+    def add_session_metric(self, name: str, function):
+        self.add_metric(name, function)
+    
+    def get_session_stats(self):
+        if not self.session_aware:
+            return {}
+        
+        session_data = []
+        for i in range(len(self.historical_info)):
+            try:
+                session_info = self.historical_info[i].get('data', {})
+                session_data.append({
+                    'session_spread_multiplier': session_info.get('session_spread_multiplier', 1.0),
+                    'session_high_volatility': session_info.get('session_high_volatility', 0),
+                    'portfolio_return': (self.historical_info['portfolio_valuation', i] / 
+                                       self.historical_info['portfolio_valuation', 0] - 1) * 100
+                })
+            except:
+                continue
+        
+        if not session_data:
+            return {}
+        
+        df_sessions = pd.DataFrame(session_data)
+        
+        return {
+            'avg_spread_multiplier': df_sessions['session_spread_multiplier'].mean(),
+            'high_volatility_periods': df_sessions['session_high_volatility'].sum(),
+            'avg_return_high_vol': df_sessions[df_sessions['session_high_volatility'] == 1]['portfolio_return'].mean(),
+            'avg_return_low_vol': df_sessions[df_sessions['session_high_volatility'] == 0]['portfolio_return'].mean()
+        }
