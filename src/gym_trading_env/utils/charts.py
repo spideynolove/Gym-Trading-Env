@@ -1,5 +1,10 @@
 import pyecharts.options as opts
 from pyecharts.charts import Candlestick, Bar, Grid, Line
+from pyecharts.components import Table
+from pyecharts.commons.utils import JsCode
+from pyecharts.globals import ThemeType
+import numpy as np
+import pandas as pd
 def charts(df, lines=[]):
     line_key = 'ievi4G3vG678Vszad'
     for line in lines:
@@ -160,3 +165,4 @@ def charts(df, lines=[]):
         AnimationOpts(animation=False), bg_color='white',
         is_horizontal_center=True))
     return grid_chart
+    grid_chart.render('render.html')

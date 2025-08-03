@@ -2,6 +2,7 @@ import asyncio
 import ccxt.async_support as ccxt
 import pandas as pd
 import datetime
+import numpy as np
 import nest_asyncio
 nest_asyncio.apply()
 import sys
