@@ -27,3 +27,9 @@ temp/
 forexpy/
 markdown/
 plan/
+
+tree.*
+test.*
+.serena
+.claude
+.bmad-core

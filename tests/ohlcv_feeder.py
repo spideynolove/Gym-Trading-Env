@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as np
+import numpy as np     # not use
 from datetime import datetime
 import time
 import threading
@@ -19,8 +19,12 @@ class RealTimeOHLCVFeeder:
         self.raw_data = []
         self.current_index = -1
         self.running = False
-        self.data_processor = DataProcessor()
-        
+        self.data_processor = DataProcessor() # not use
+
+        self.feature_config = None
+        self.cached_features = None
+        self.last_processed_index = -1
+
         self.timestamps = []
         self.opens = []
         self.highs = []
@@ -29,7 +33,7 @@ class RealTimeOHLCVFeeder:
         self.volumes = []
         
         self.processed_df = pd.DataFrame()
-        self.data_queue = queue.Queue()
+        self.data_queue = queue.Queue() # not use
         
         self._load_all_data()
     
@@ -40,6 +44,7 @@ class RealTimeOHLCVFeeder:
                     next(f)
                 for line in f:
                     bar_data = self.parse_data_line(line)
+                    # print(type(bar_data))   # <class 'dict'>
                     if bar_data:
                         self.raw_data.append(bar_data)
         except Exception as e:
@@ -151,7 +156,9 @@ class RealTimeOHLCVFeeder:
         self.closes = []
         self.volumes = []
         self.processed_df = pd.DataFrame()
-    
+        self.cached_features = None
+        self.last_processed_index = -1
+
     def simulate_trading_session(self, callback_func=None):
         self.running = True
         while self.running and self.has_next_bar():
@@ -166,7 +173,7 @@ class RealTimeOHLCVFeeder:
         
         self.running = False
     
-    def start_async_simulation(self, callback_func):
+    def start_async_simulation(self, callback_func):    # not use
         def simulation_thread():
             self.simulate_trading_session(callback_func)
         
@@ -183,19 +190,89 @@ class RealTimeOHLCVFeeder:
     def get_total_bars(self):
         return len(self.raw_data)
 
+    def set_feature_config(self, config_path=None, config_dict=None):
+        if config_path:
+            self.data_processor = DataProcessor(config_path)
+            self.feature_config = config_path
+        elif config_dict:
+            self.data_processor.config = config_dict
+            self.feature_config = config_dict
+
+    def get_current_features(self, window_size=50, add_patterns=True, add_volatility=True, add_time_features=True, add_categorical=True):
+        if self.current_index < 0 or len(self.closes) < max(window_size, 30):
+            return {}
+        
+        if self.last_processed_index == self.current_index and self.cached_features is not None:
+            return self.cached_features
+        
+        lookback_data = self.get_lookback_window(window_size)
+        if not lookback_data:
+            return {}
+        
+        window_df = pd.DataFrame({
+            'timestamp': lookback_data['timestamps'],
+            'open': lookback_data['opens'],
+            'high': lookback_data['highs'],
+            'low': lookback_data['lows'],
+            'close': lookback_data['closes'],
+            'volume': lookback_data['volumes']
+        })
+        
+        # print(f"Debug: Processing {len(window_df)} bars for features")
+        
+        try:
+            features_df = self.data_processor.process_dataframe(
+                window_df,
+                add_patterns=add_patterns,
+                add_volatility=add_volatility,
+                add_time_features=add_time_features,
+                add_categorical=add_categorical
+            )
+            
+            # print(f"Debug: Features DataFrame shape: {features_df.shape}")
+            # print(f"Debug: Columns: {list(features_df.columns)}")
+            
+            latest_features = {}
+            for col in features_df.columns:
+                if col not in ['timestamp', 'open', 'high', 'low', 'close', 'volume']:
+                    value = features_df[col].iloc[-1]
+                    if pd.notna(value):
+                        latest_features[f'feature_{col}'] = value
+            
+            # print(f"Debug: Extracted {len(latest_features)} features")
+            
+            self.cached_features = latest_features
+            self.last_processed_index = self.current_index
+            return latest_features
+            
+        except Exception as e:
+            print(f"Debug: Error in feature processing: {e}")
+            return {}
+
+    def get_enhanced_state(self, window_size=50, **feature_kwargs):
+        base_state = self.get_current_state()
+        if base_state is None:
+            return None
+        
+        features = self.get_current_features(window_size, **feature_kwargs)
+        base_state['features'] = features
+        return base_state
+
 if __name__ == "__main__":
     def trading_callback(state):
         current_bar = state['current_bar']
         print(f"Bar {state['current_index']}: {current_bar['timestamp']} "
-              f"O: {current_bar['open']:.5f}, H: {current_bar['high']:.5f}, "
-              f"L: {current_bar['low']:.5f}, C: {current_bar['close']:.5f}, V: {current_bar['volume']}")
+            f"O: {current_bar['open']:.5f}, H: {current_bar['high']:.5f}, "
+            f"L: {current_bar['low']:.5f}, C: {current_bar['close']:.5f}, V: {current_bar['volume']}")
         
-        lookback = feeder.get_lookback_window(10)
-        if lookback:
-            recent_closes = lookback['closes']
-            if len(recent_closes) >= 2:
-                price_change = (recent_closes[-1] / recent_closes[-2] - 1) * 100
-                print(f"  Price change: {price_change:.5f}")
+        if state['current_index'] > 20:
+            enhanced_state = feeder.get_enhanced_state(window_size=20)
+            if enhanced_state and enhanced_state['features']:
+                feature_count = len(enhanced_state['features'])
+                sample_features = list(enhanced_state['features'].items())[:3]
+                print(f"  Features: {feature_count} total, sample: {sample_features}")
+            else:
+                print(f"  No features generated")
     
     feeder = RealTimeOHLCVFeeder(
         data_file='/home/hung/Public/Test/FX/data/GBPUSD1440.csv',
@@ -210,7 +287,19 @@ if __name__ == "__main__":
         # timestamp_format='%Y-%m-%d %H:%M'  
         timestamp_format='%Y-%m-%d'
     )
-    
+
+    feeder.set_feature_config(config_dict={
+        'categorical_features': [
+            {
+                'name': 'price_momentum',
+                'method': 'cut',
+                'source_column': 'close_change',
+                'bins': [-np.inf, -1.0, 1.0, np.inf],
+                'labels': ['Bear', 'Neutral', 'Bull'],
+                'active': True
+            }
+        ]
+    })
     print(f"Loaded {feeder.get_total_bars()} bars")
     
     try:
