@@ -33,3 +33,5 @@ test.*
 .serena
 .claude
 .bmad-core
+
+gym_trading_env-new.txt

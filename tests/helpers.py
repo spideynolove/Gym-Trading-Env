@@ -22,7 +22,11 @@ class LazyCallable:
 
 class TechnicalIndicators:
     @staticmethod
-    def add_technical_indicators(df: pd.DataFrame, indicators: Dict[str, Dict]) -> pd.DataFrame:
+    def add_technical_indicators(
+        df: pd.DataFrame, 
+        indicators: Dict[str, Dict]
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         for indicator, params in indicators.items():
@@ -61,12 +65,20 @@ class TechnicalIndicators:
         return df_result
 
 class RollingFeatures:
-    SUPPORTED_FUNCTIONS = ['mean', 'sum', 'max', 'min', 'var', 'std', 'skew', 'kurt', 'shift', 'diff']
+    SUPPORTED_FUNCTIONS = (
+        'mean', 'sum', 'max', 'min', 
+        'var', 'std', 'skew', 'kurt', 
+        'shift', 'diff'
+    )
     
     @staticmethod
-    def add_rolling_functions(df: pd.DataFrame, column_names: List[str], 
-                            window_sizes: List[Union[int, str]], 
-                            functions: List[str]) -> pd.DataFrame:
+    def add_rolling_functions(
+        df: pd.DataFrame, 
+        column_names: List[str], 
+        window_sizes: List[Union[int, str]], 
+        functions: List[str]
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         for column_name in column_names:
@@ -108,7 +120,12 @@ class PercentageChanges:
     PERIOD_MAP = {'W': 5, 'M': 21, 'Q': 63, 'Y': 252, '3Y': 756}
     
     @staticmethod
-    def add_percentage_change(df: pd.DataFrame, column_name: str, periods: List[Union[str, int]]) -> pd.DataFrame:
+    def add_percentage_change(
+        df: pd.DataFrame, 
+        column_name: str, 
+        periods: List[Union[str, int]]
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         for period in periods:
@@ -157,8 +174,12 @@ class PivotPoints:
     }
     
     @staticmethod
-    def calculate_pivot_points(df: pd.DataFrame, suffix: str = '', 
-                             pivot_type: str = 'standard') -> pd.DataFrame:
+    def calculate_pivot_points(
+        df: pd.DataFrame, 
+        suffix: str = '', 
+        pivot_type: str = 'standard'
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         if pivot_type == 'standard':
@@ -205,19 +226,34 @@ class PivotPoints:
         return np.select(conditions, choices_adjusted, default=np.nan)
 
 class FibonacciLevels:
-    STANDARD_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.786]
-    EXTENDED_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.707, 0.786, 0.886, 1.382, 1.5, 1.618, 1.786, 1.886, 2.0, 2.618, 2.786, 2.886]
-    IMPORTANT_LEVELS = [1.786, 1.886, 2.786, 2.886]
+    STANDARD_LEVELS = (0.236, 0.382, 0.5, 0.618, 0.786)
+    EXTENDED_LEVELS = (
+        0.236, 0.382, 0.5, 0.618, 0.707, 0.786, 
+        0.886, 1.382, 1.5, 1.618, 1.786, 1.886, 
+        2.0, 2.618, 2.786, 2.886
+    )
+    IMPORTANT_LEVELS = (1.786, 1.886, 2.786, 2.886)
     
     @staticmethod
-    def calculate_fib_levels(start: float, end: float, levels: List[float]) -> List[float]:
+    def calculate_fib_levels(
+        start: float, 
+        end: float, 
+        levels: List[float]
+    ) -> List[float]:
+        
         ratios = sorted([0.0] + levels + [1.0])
         level_prices = [round(start + ratio * (end - start), 6) for ratio in ratios]
         return level_prices[1:-1]
     
     @staticmethod
-    def add_fibonacci_levels(df: pd.DataFrame, high_col: str = 'high', low_col: str = 'low',
-                           levels: List[float] = None, level_type: str = 'standard') -> pd.DataFrame:
+    def add_fibonacci_levels(
+        df: pd.DataFrame, 
+        high_col: str = 'high', 
+        low_col: str = 'low',
+        levels: List[float] = None, 
+        level_type: str = 'standard'
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         if levels is None:
@@ -236,12 +272,15 @@ class FibonacciLevels:
 
 class PriceTransformations:
     @staticmethod
-    def add_basic_transformations(df: pd.DataFrame, 
-                                open_col: str = 'open',
-                                high_col: str = 'high', 
-                                low_col: str = 'low',
-                                close_col: str = 'close',
-                                volume_col: str = 'volume') -> pd.DataFrame:
+    def add_basic_transformations(
+        df: pd.DataFrame, 
+        open_col: str = 'open',
+        high_col: str = 'high', 
+        low_col: str = 'low',
+        close_col: str = 'close',
+        volume_col: str = 'volume'
+    ) -> pd.DataFrame:
+    
         df_result = df.copy()
         
         df_result['ohlc_average'] = (df_result[open_col] + df_result[high_col] + 
@@ -271,11 +310,14 @@ class PriceTransformations:
         return df_result
     
     @staticmethod
-    def add_price_patterns(df: pd.DataFrame,
-                         open_col: str = 'open', 
-                         high_col: str = 'high',
-                         low_col: str = 'low', 
-                         close_col: str = 'close') -> pd.DataFrame:
+    def add_price_patterns(
+        df: pd.DataFrame,
+        open_col: str = 'open', 
+        high_col: str = 'high',
+        low_col: str = 'low', 
+        close_col: str = 'close'
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         body_size = abs(df_result[close_col] - df_result[open_col])
@@ -299,7 +341,14 @@ class PriceTransformations:
 
 class AdvancedFeatures:
     @staticmethod
-    def calculate_close_to_close_volatility(df, close_col='close', windows=[30], trading_periods=[252], clean=False):
+    def calculate_close_to_close_volatility(
+        df, 
+        close_col='close', 
+        windows=[30], 
+        trading_periods=[252], 
+        clean=False
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         for trading_period in trading_periods:
             for window in windows:
@@ -311,7 +360,15 @@ class AdvancedFeatures:
         return df_result
 
     @staticmethod
-    def calculate_parkinson_volatility(df, high_col='high', low_col='low', windows=[30], trading_periods=[252], clean=False):
+    def calculate_parkinson_volatility(
+        df, 
+        high_col='high', 
+        low_col='low', 
+        windows=[30], 
+        trading_periods=[252], 
+        clean=False
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         for trading_period in trading_periods:
             for window in windows:
@@ -330,7 +387,17 @@ class AdvancedFeatures:
         return df_result
 
     @staticmethod
-    def calculate_garman_klass_volatility(df, high_col='high', low_col='low', close_col='close', open_col='open', windows=[30], trading_periods=[252], clean=False):
+    def calculate_garman_klass_volatility(
+        df, 
+        high_col='high', 
+        low_col='low', 
+        close_col='close', 
+        open_col='open', 
+        windows=[30], 
+        trading_periods=[252], 
+        clean=False
+    ) -> pd.DataFrame:
+
         df_result = df.copy()
         for trading_period in trading_periods:
             for window in windows:
@@ -351,7 +418,14 @@ class AdvancedFeatures:
         return df_result
 
     @staticmethod
-    def calculate_hodges_tompkins_volatility(df, close_col='close', windows=[30], trading_periods=[252], clean=False):
+    def calculate_hodges_tompkins_volatility(
+        df, 
+        close_col='close', 
+        windows=[30], 
+        trading_periods=[252], 
+        clean=False
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         for trading_period in trading_periods:
             for window in windows:
@@ -371,7 +445,17 @@ class AdvancedFeatures:
         return df_result
 
     @staticmethod
-    def calculate_rogers_satchell_volatility(df, high_col='high', low_col='low', close_col='close', open_col='open', windows=[30], trading_periods=[252], clean=False):
+    def calculate_rogers_satchell_volatility(
+        df, 
+        high_col='high', 
+        low_col='low',
+        close_col='close',
+        open_col='open',
+        windows=[30],
+        trading_periods=[252],
+        clean=False
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         for trading_period in trading_periods:
             for window in windows:
@@ -392,7 +476,17 @@ class AdvancedFeatures:
         return df_result
 
     @staticmethod
-    def calculate_yang_zhang_volatility(df, high_col='high', low_col='low', close_col='close', open_col='open', windows=[30], trading_periods=[252], clean=False):
+    def calculate_yang_zhang_volatility(
+        df, 
+        high_col='high', 
+        low_col='low',
+        close_col='close',
+        open_col='open',
+        windows=[30],
+        trading_periods=[252],
+        clean=False
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         for trading_period in trading_periods:
             for window in windows:
@@ -424,9 +518,15 @@ class AdvancedFeatures:
         return df_result
 
     @staticmethod
-    def add_volatility_features(df: pd.DataFrame, close_col: str = 'close',
-                              high_col: str = 'high', low_col: str = 'low', open_col: str = 'open',
-                              windows: List[int] = [5, 10, 20, 50]) -> pd.DataFrame:
+    def add_volatility_features(
+        df: pd.DataFrame, 
+        close_col: str = 'close',
+        high_col: str = 'high', 
+        low_col: str = 'low', 
+        open_col: str = 'open',
+        windows: List[int] = [5, 10, 20, 50]
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         returns = df_result[close_col].pct_change()
@@ -446,7 +546,13 @@ class AdvancedFeatures:
         return df_result
 
     @staticmethod
-    def add_momentum_features(df: pd.DataFrame, close_col: str = 'close', volume_col: str = 'volume', periods: List[int] = [1, 3, 5, 10, 21]) -> pd.DataFrame:
+    def add_momentum_features(
+        df: pd.DataFrame,
+        close_col: str = 'close',
+        volume_col: str = 'volume',
+        periods: List[int] = [1, 3, 5, 10, 21]
+    ) -> pd.DataFrame:
+        
         df_result = df.copy()
         
         for period in periods:
