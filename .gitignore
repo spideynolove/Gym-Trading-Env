@@ -35,3 +35,4 @@ test.*
 .bmad-core
 
 gym_trading_env-new.txt
+prompt.md
